@@ -33,10 +33,9 @@ class GitService {
                 print("🔍 Unpushed commits detected: \(unpushed.prefix(100))")
                 status = .unpushed
             }
-            // 4. Check unpulled commits
-            else if let unpulled = self.runGitCommand(["log", "HEAD..@{u}", "--oneline"]),
-                    !unpulled.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                print("🔍 Unpulled commits detected: \(unpulled.prefix(100))")
+            // 4. Check unpulled commits (using ls-remote for lightweight check)
+            else if self.hasRemoteChanges() {
+                print("🔍 Unpulled commits detected via ls-remote")
                 status = .unpulled
             }
             // 5. All clean
@@ -62,12 +61,51 @@ class GitService {
                 return
             }
 
+            print("🌐 Running git fetch...")
             let success = self.runGitCommand(["fetch"]) != nil
 
             DispatchQueue.main.async {
                 completion(success)
             }
         }
+    }
+
+    /// Checks if there are remote changes without doing a full fetch.
+    /// Uses git ls-remote to compare remote HEAD with local tracking branch.
+    /// This is much lighter than git fetch.
+    private func hasRemoteChanges() -> Bool {
+        // Get current upstream branch name
+        guard let upstream = runGitCommand(["rev-parse", "--abbrev-ref", "@{u}"])?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return false
+        }
+
+        // Parse remote name and branch from upstream (e.g., "origin/main" -> "origin", "main")
+        let components = upstream.split(separator: "/", maxSplits: 1)
+        guard components.count == 2 else {
+            return false
+        }
+        let remoteName = String(components[0])
+        let remoteBranch = String(components[1])
+
+        // Get remote SHA via ls-remote (lightweight, doesn't download objects)
+        guard let lsRemoteOutput = runGitCommand(["ls-remote", remoteName, remoteBranch])?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return false
+        }
+
+        // Parse SHA from ls-remote output (format: "SHA\trefs/heads/branch")
+        let remoteSHA = lsRemoteOutput.split(separator: "\t").first.map(String.init) ?? ""
+
+        // Get local tracking branch SHA
+        guard let localTrackingSHA = runGitCommand(["rev-parse", "@{u}"])?.trimmingCharacters(in: .whitespacesAndNewlines) else {
+            return false
+        }
+
+        // If SHAs differ, there are remote changes we haven't fetched yet
+        let hasChanges = remoteSHA != localTrackingSHA
+        if hasChanges {
+            print("🔍 Remote SHA (\(remoteSHA.prefix(8))) != Local tracking SHA (\(localTrackingSHA.prefix(8)))")
+        }
+        return hasChanges
     }
 
     private func runGitCommand(_ args: [String]) -> String? {

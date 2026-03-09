@@ -13,8 +13,11 @@ class ConfigService {
 
         // Check if config file exists
         guard fileManager.fileExists(atPath: expandedPath) else {
-            // Return default config if file doesn't exist
-            return Config(repositoryPath: "~/config-files")
+            // Create default config and save it
+            let defaultConfig = Config(repositoryPath: "~/config-files")
+            print("📝 Config file not found, creating default at: \(expandedPath)")
+            saveConfig(defaultConfig)
+            return defaultConfig
         }
 
         do {

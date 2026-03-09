@@ -5,12 +5,42 @@ class StatusBarController {
     var statusItem: NSStatusItem?
     var gitService: GitService
     var timer: Timer?
-    let fetchInterval: TimeInterval = 300.0 // 5 Minuten
+    let checkInterval: TimeInterval = 300.0 // 5 Minuten
     let repositoryPath: String
+    var isValidRepository: Bool = false
 
     init(repositoryPath: String) {
         self.repositoryPath = repositoryPath
         self.gitService = GitService(repositoryPath: repositoryPath)
+        self.isValidRepository = validateRepository(at: repositoryPath)
+    }
+
+    private func validateRepository(at path: String) -> Bool {
+        let fileManager = FileManager.default
+
+        // Check if path is home directory
+        let homeDir = NSString(string: "~").expandingTildeInPath
+        if path == homeDir {
+            print("⚠️ Repository path is home directory, this is not recommended")
+            return false
+        }
+
+        // Check if path exists and is a directory
+        var isDirectory: ObjCBool = false
+        guard fileManager.fileExists(atPath: path, isDirectory: &isDirectory), isDirectory.boolValue else {
+            print("⚠️ Repository path does not exist or is not a directory: \(path)")
+            return false
+        }
+
+        // Check if it's a git repository
+        let gitPath = (path as NSString).appendingPathComponent(".git")
+        guard fileManager.fileExists(atPath: gitPath) else {
+            print("⚠️ Path is not a git repository (no .git folder): \(path)")
+            return false
+        }
+
+        print("✅ Repository is valid: \(path)")
+        return true
     }
 
     func setupStatusBar() {
@@ -31,10 +61,16 @@ class StatusBarController {
 
         menu.addItem(NSMenuItem.separator())
 
-        // Update now action
-        let updateItem = NSMenuItem(title: "Jetzt aktualisieren", action: #selector(updateNow), keyEquivalent: "r")
-        updateItem.target = self
-        menu.addItem(updateItem)
+        // Show update action or error message based on repository validity
+        if isValidRepository {
+            let updateItem = NSMenuItem(title: "Jetzt aktualisieren", action: #selector(updateNow), keyEquivalent: "r")
+            updateItem.target = self
+            menu.addItem(updateItem)
+        } else {
+            let errorItem = NSMenuItem(title: "⚠️ Kein gültiges Git-Repository", action: nil, keyEquivalent: "")
+            errorItem.isEnabled = false
+            menu.addItem(errorItem)
+        }
 
         menu.addItem(NSMenuItem.separator())
 
@@ -74,12 +110,21 @@ class StatusBarController {
     }
 
     func startTimer() {
-        // Initial update
-        updateStatus()
+        // Only start timer if repository is valid
+        guard isValidRepository else {
+            print("⚠️ Skipping timer start - invalid repository")
+            return
+        }
 
-        // Start periodic timer
+        // Initial fetch and update
+        gitService.fetch { success in
+            print("✅ Initial fetch completed: \(success)")
+            self.updateStatus()
+        }
+
+        // Start periodic timer for status checks
         timer = Timer.scheduledTimer(
-            timeInterval: fetchInterval,
+            timeInterval: checkInterval,
             target: self,
             selector: #selector(timerTick),
             userInfo: nil,
@@ -88,11 +133,8 @@ class StatusBarController {
     }
 
     @objc func timerTick() {
-        // Perform git fetch
-        gitService.fetch { success in
-            // Update status after fetch completes
-            self.updateStatus()
-        }
+        // Periodic status check (uses lightweight ls-remote)
+        updateStatus()
     }
 
     @objc func updateNow() {
