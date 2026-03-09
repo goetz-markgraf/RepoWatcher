@@ -1,0 +1,24 @@
+# macOS
+.DS_Store
+
+# Xcode
+xcuserdata/
+*.xcworkspace
+!*.xcworkspace/contents.xcworkspacedata
+!*.xcworkspace/xcshareddata/
+DerivedData/
+*.pbxuser
+*.mode1v3
+*.mode2v3
+*.perspectivev3
+*.xccheckout
+*.moved-aside
+
+# Build products
+build/
+*.app
+*.dSYM
+
+# Nix/direnv
+.direnv/
+result
