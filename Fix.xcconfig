@@ -1,0 +1,9 @@
+// Workaround für Xcode 26.x Linker Bug
+// Das Problem: Xcode ruft 'ld' direkt mit -Xlinker Optionen auf
+// Die Lösung: Verwende CLANG als Linker-Driver
+
+// Verwende Clang als Linker statt ld direkt
+LD = $(DT_TOOLCHAIN_DIR)/usr/bin/clang
+
+// Stelle sicher, dass MACH_O_TYPE korrekt ist
+MACH_O_TYPE = mh_execute
